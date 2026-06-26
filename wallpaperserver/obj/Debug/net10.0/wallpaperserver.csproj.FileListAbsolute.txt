@@ -1,0 +1,15 @@
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\bin\Debug\net10.0\wallpaperserver.exe
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\bin\Debug\net10.0\wallpaperserver.deps.json
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\bin\Debug\net10.0\wallpaperserver.runtimeconfig.json
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\bin\Debug\net10.0\wallpaperserver.dll
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\bin\Debug\net10.0\wallpaperserver.pdb
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.GeneratedMSBuildEditorConfig.editorconfig
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.AssemblyInfoInputs.cache
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.AssemblyInfo.cs
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.csproj.CoreCompileInputs.cache
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.sourcelink.json
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.dll
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\refint\wallpaperserver.dll
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.pdb
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\wallpaperserver.genruntimeconfig.cache
+D:\Gokulashik M\Projects\custom_dev_wallpaper\wallpaperserver\obj\Debug\net10.0\ref\wallpaperserver.dll
