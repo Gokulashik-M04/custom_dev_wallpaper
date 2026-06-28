@@ -5,6 +5,17 @@
     <meta charset="UTF-8">
     <title>Code</title>
     <style>
+        :root {
+            --bg: #0a0a0a;
+            --panel: #141414;
+            --border: #2e2e2e;
+            --text: #e8e8e8;
+            --muted: #888888;
+            --bar-bg: #1f1f1f;
+            --bar-fill: #f2f2f2;
+            --accent: #ffffff;
+        }
+
         html,
         body {
             margin: 0;
@@ -23,30 +34,101 @@
             cursor: none;
         }
 
-        /* The heart-shaped slot that holds the crossfading image stack.
-     Position/size are set from JS to match the canvas text layout exactly.
-     Clipping uses an SVG clipPath (objectBoundingBox units) so the heart
-     shape scales correctly to whatever size the slot ends up being. */
         #heart-slot {
             position: absolute;
             clip-path: url(#heartClipPath);
             overflow: hidden;
             background: #000;
+            z-index: 1;
         }
 
-        #heart-slot img {
+        #heart-fill {
             position: absolute;
-            top: 0;
             left: 0;
             width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0;
-            transition: opacity 1.1s ease;
+            bottom: 0;
+            height: 0%;
+            background: #ff0000;
+            transition: height 0.6s ease, background-color 0.6s ease;
         }
 
-        #heart-slot img.active {
-            opacity: 1;
+        #heart-outline {
+            position: absolute;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        #heart-outline path {
+            fill: none;
+            stroke: #ffffff;
+            stroke-width: 3;
+            vector-effect: non-scaling-stroke;
+        }
+
+
+        .progress-widget {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 16px 20px;
+            width: 320px;
+            font-family: 'Courier New', Consolas, Monaco, monospace;
+            color: var(--text);
+            z-index: 10;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+
+        .progress-widget__title {
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .progress-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .progress-bar-track {
+            flex: 1;
+            height: 10px;
+            background: var(--bar-bg);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: repeating-linear-gradient(135deg,
+                    var(--bar-fill) 0px, var(--bar-fill) 8px,
+                    #d0d0d0 8px, #d0d0d0 16px);
+            transition: width 0.6s ease, filter 0.6s ease;
+        }
+
+        .progress-widget__percent {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--accent);
+            min-width: 38px;
+            text-align: right;
+        }
+
+        .progress-widget__meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .progress-widget__meta span#current-count {
+            color: var(--text);
         }
     </style>
 </head>
@@ -56,264 +138,85 @@
         <defs>
             <clipPath id="heartClipPath" clipPathUnits="objectBoundingBox">
                 <path d="
-        M0.2 0.1
-        H0.4
-        V0.2
-        H0.5
-        V0.1
-        H0.7
-        V0.2
-        H0.8
-        V0.4
-        H0.7
-        V0.5
-        H0.6
-        V0.6
-        H0.5
-        V0.7
-        H0.4
-        V0.6
-        H0.3
-        V0.5
-        H0.2
-        V0.4
-        H0.1
-        V0.2
-        H0.2
-        Z" />
+            M0.2 0.1
+            H0.4
+            V0.2
+            H0.5
+            V0.1
+            H0.7
+            V0.2
+            H0.8
+            V0.4
+            H0.7
+            V0.5
+            H0.6
+            V0.6
+            H0.5
+            V0.7
+            H0.4
+            V0.6
+            H0.3
+            V0.5
+            H0.2
+            V0.4
+            H0.1
+            V0.2
+            H0.2
+            Z" />
             </clipPath>
         </defs>
     </svg>
     <canvas id="c"></canvas>
-    <div id="heart-slot"></div>
+    <div id="heart-slot">
+        <div id="heart-fill"></div>
+    </div>
 
-    <script>
-        const canvas = document.getElementById('c');
-        const ctx = canvas.getContext('2d');
-        const heartSlot = document.getElementById('heart-slot');
+    <svg id="heart-outline" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d="
+            M20 10
+            H40
+            V20
+            H50
+            V10
+            H70
+            V20
+            H80
+            V40
+            H70
+            V50
+            H60
+            V60
+            H50
+            V70
+            H40
+            V60
+            H30
+            V50
+            H20
+            V40
+            H10
+            V20
+            H20
+            Z" />
+    </svg>
 
-        let W, H;
-        function resize() {
-            W = canvas.width = window.innerWidth;
-            H = canvas.height = window.innerHeight;
-        }
-        resize();
-        window.addEventListener('resize', () => { resize(); buildGrid(); positionHeartSlot(); });
+    <div class="progress-widget" id="progressWidget">
+        <div class="progress-widget__title" id="progressTitle">loading</div>
 
-        // ---- Pixel grid settings ----
-        const PIXEL = 6;      // size of each "pixel" cell
-        const GAP = 1;        // gap between pixels
+        <div class="progress-bar-row">
+            <div class="progress-bar-track">
+                <div class="progress-bar-fill" id="progressFill"></div>
+            </div>
+            <span class="progress-widget__percent" id="percentLabel">0%</span>
+        </div>
 
-        // ---- Layout settings (shared by canvas text + heart slot positioning) ----
-        const FONT_SIZE = 170;
-        const FONT_FAMILY = "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', 'Lucida Handwriting', cursive";
-        const offCanvas = document.createElement('canvas');
-        const offCtx = offCanvas.getContext('2d');
+        <div class="progress-widget__meta">
+            <span><span id="current-count">0</span> / <span id="total-count">0</span></span>
+            <span id="statusLabel">idle</span>
+        </div>
+    </div>
+    <script src="script.js"></script>
 
-        // Computes the shared layout: where "C" sits, where the heart gap sits, where "de" sits.
-        // Used both for drawing the pixel text mask and for positioning the HTML heart slot.
-        function computeLayout() {
-            offCtx.font = `italic 700 ${FONT_SIZE}px ${FONT_FAMILY}`;
-            const cy = H / 2 + FONT_SIZE * 0.32;
-
-            const cWidth = offCtx.measureText('C').width;
-            const heartSize = FONT_SIZE * 0.85;
-            const heartGapWidth = heartSize * 1.15;
-            const deWidth = offCtx.measureText('de').width;
-            const spacing = FONT_SIZE * 0.10;
-            const totalWidth = cWidth + spacing + heartGapWidth + spacing + deWidth;
-            let startX = (W - totalWidth) / 2;
-
-            const cStartX = startX;
-            startX += cWidth + spacing;
-
-            const heartStartX = startX;
-            const heartCenterX = startX + heartGapWidth / 2;
-            const heartCenterY = cy - FONT_SIZE * 0.32;
-            startX += heartGapWidth + spacing;
-
-            const deStartX = startX;
-
-            return {
-                cy, cStartX, cWidth,
-                heartStartX, heartGapWidth, heartCenterX, heartCenterY, heartSize,
-                deStartX, deWidth
-            };
-        }
-
-        // ---- Draw "C" and "de" only (heart is left as empty space, filled by HTML slot) ----
-        function buildTextMask() {
-            offCanvas.width = W;
-            offCanvas.height = H;
-            offCtx.clearRect(0, 0, W, H);
-            offCtx.fillStyle = '#fff';
-            offCtx.textBaseline = 'alphabetic';
-            offCtx.textAlign = 'left';
-            offCtx.font = `italic 700 ${FONT_SIZE}px ${FONT_FAMILY}`;
-
-            const layout = computeLayout();
-            offCtx.fillText('C', layout.cStartX, layout.cy);
-            offCtx.fillText('de', layout.deStartX, layout.cy);
-        }
-
-        // ---- Position the HTML heart-image-slot to match the gap left for it ----
-        function positionHeartSlot() {
-            const layout = computeLayout();
-            const s = layout.heartSize / 2;
-            // bounding box roughly matches the heart silhouette: slightly taller than wide
-            const boxW = s * 2.0;
-            const boxH = s * 2.05;
-            const left = layout.heartCenterX - boxW / 3;
-            const top = layout.heartCenterY - boxH * 0.48;
-
-            heartSlot.style.left = `${left}px`;
-            heartSlot.style.top = `${top}px`;
-            heartSlot.style.width = `${boxW}px`;
-            heartSlot.style.height = `${boxH}px`;
-        }
-
-        // ---- Build the grid of pixel cells from the text mask ----
-        let cells = [];
-
-        function buildGrid() {
-            buildTextMask();
-            const textData = offCtx.getImageData(0, 0, W, H).data;
-
-            cells = [];
-            const cols = Math.floor(W / (PIXEL + GAP));
-            const rows = Math.floor(H / (PIXEL + GAP));
-
-            for (let row = 0; row < rows; row++) {
-                for (let col = 0; col < cols; col++) {
-                    const px = col * (PIXEL + GAP) + PIXEL / 2;
-                    const py = row * (PIXEL + GAP) + PIXEL / 2;
-                    const idx = (Math.floor(py) * W + Math.floor(px)) * 4;
-                    const alpha = textData[idx + 3];
-
-                    if (alpha > 50) {
-                        cells.push({
-                            x: col * (PIXEL + GAP),
-                            y: row * (PIXEL + GAP),
-                            cx: px,
-                            cy: py
-                        });
-                    }
-                }
-            }
-        }
-
-        buildGrid();
-        positionHeartSlot();
-
-        // ---- Mouse tracking ----
-        let mouseX = -9999, mouseY = -9999;
-        window.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-        window.addEventListener('mouseleave', () => {
-            mouseX = -9999;
-            mouseY = -9999;
-        });
-
-        // ---- Color definitions ----
-        const GREY_BASE = { r: 90, g: 90, b: 90 };
-        const GREY_BRIGHT = { r: 235, g: 235, b: 235 };
-        const HOVER_RADIUS = 160;
-
-        function lerp(a, b, t) {
-            return a + (b - a) * t;
-        }
-        function lerpColor(c1, c2, t) {
-            return {
-                r: Math.round(lerp(c1.r, c2.r, t)),
-                g: Math.round(lerp(c1.g, c2.g, t)),
-                b: Math.round(lerp(c1.b, c2.b, t))
-            };
-        }
-
-        function draw() {
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, W, H);
-
-            for (let i = 0; i < cells.length; i++) {
-                const cell = cells[i];
-                const dx = cell.cx - mouseX;
-                const dy = cell.cy - mouseY;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                let t = 0;
-                if (dist < HOVER_RADIUS) {
-                    t = 1 - dist / HOVER_RADIUS;
-                    t = t * t; // ease for smoother falloff
-                }
-
-                const color = lerpColor(GREY_BASE, GREY_BRIGHT, t);
-                ctx.fillStyle = `rgb(${color.r},${color.g},${color.b})`;
-                ctx.fillRect(cell.x, cell.y, PIXEL, PIXEL);
-            }
-
-            requestAnimationFrame(draw);
-        }
-
-        draw();
-
-        // ===================================================================
-        // Heart image slot: crossfading placeholder image stack
-        // ===================================================================
-
-        // List of placeholder image URLs. Replace these with real images any time —
-        // just edit this array. Empty/broken URLs will simply show as blank/transparent,
-        // which is fine since the slot's own background is already black.
-        const HEART_IMAGES = [
-            './images/luffy.jpg',
-            './images/naruto.jpg',
-        ];
-
-        const SLIDE_INTERVAL_MS = 3500; // how long each image stays before crossfading
-        let currentIndex = 0;
-        let cycleTimer = null;
-        let isPaused = false;
-
-        // Build <img> elements for each entry, stacked on top of each other
-        const imgEls = HEART_IMAGES.map((src, i) => {
-            const img = document.createElement('img');
-            if (src) img.src = src; // leave src unset if empty, so it just renders blank/transparent
-            img.alt = '';
-            img.draggable = false;
-            if (i === 0) img.classList.add('active');
-            heartSlot.appendChild(img);
-            return img;
-        });
-
-        function showNextImage() {
-            if (imgEls.length === 0) return;
-            const nextIndex = (currentIndex + 1) % imgEls.length;
-            imgEls[currentIndex].classList.remove('active');
-            imgEls[nextIndex].classList.add('active');
-            currentIndex = nextIndex;
-        }
-
-        function startCycle() {
-            stopCycle();
-            cycleTimer = setInterval(() => {
-                if (!isPaused) showNextImage();
-            }, SLIDE_INTERVAL_MS);
-        }
-
-        function stopCycle() {
-            if (cycleTimer) {
-                clearInterval(cycleTimer);
-                cycleTimer = null;
-            }
-        }
-
-        // Pause auto-cycling while the mouse is over the heart slot, resume on leave
-        heartSlot.addEventListener('mouseenter', () => { isPaused = true; });
-        heartSlot.addEventListener('mouseleave', () => { isPaused = false; });
-
-        if (imgEls.length >= 1) startCycle();
-    </script>
 </body>
 
 </html>
