@@ -1,21 +1,286 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mouse Test</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Code</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --panel: #141414;
+            --border: #2e2e2e;
+            --text: #e8e8e8;
+            --muted: #888888;
+            --bar-bg: #1f1f1f;
+            --bar-fill: #f2f2f2;
+            --accent: #ffffff;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: none;
+        }
+
+        #heart-slot {
+            position: absolute;
+            clip-path: url(#heartClipPath);
+            overflow: hidden;
+            background: #000;
+            z-index: 1;
+        }
+
+        #heart-fill {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            bottom: 0;
+            height: 0%;
+            background: #ff0000;
+            transition: height 0.6s ease, background-color 0.6s ease;
+        }
+
+        #heart-outline {
+            position: absolute;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        #heart-outline path {
+            fill: none;
+            stroke: #ffffff;
+            stroke-width: 3;
+            vector-effect: non-scaling-stroke;
+        }
+
+        #typewriter {
+            position: absolute;
+            transform: translateX(-50%);
+            font-family: 'Courier New', Consolas, Monaco, monospace;
+            font-size: 20px;
+            letter-spacing: 1px;
+            color: var(--muted);
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        #typewriter-cursor {
+            display: inline-block;
+            margin-left: 2px;
+            animation: blink 0.8s steps(1) infinite;
+        }
+
+        #typewriter-text {
+            color: #ff4d4d;
+            /* whatever you want */
+        }
+
+        @keyframes blink {
+
+            0%,
+            49% {
+                opacity: 1;
+            }
+
+            50%,
+            100% {
+                opacity: 0;
+            }
+        }
+
+
+        .widgets-container {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .progress-widget {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 16px 20px;
+            width: 320px;
+            font-family: 'Courier New', Consolas, Monaco, monospace;
+            color: var(--text);
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+
+        .progress-widget__title {
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .progress-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .progress-bar-track {
+            flex: 1;
+            height: 10px;
+            background: var(--bar-bg);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: repeating-linear-gradient(135deg,
+                    var(--bar-fill) 0px, var(--bar-fill) 8px,
+                    #d0d0d0 8px, #d0d0d0 16px);
+            transition: width 0.6s ease, filter 0.6s ease;
+        }
+
+        .progress-widget__percent {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--accent);
+            min-width: 38px;
+            text-align: right;
+        }
+
+        .progress-widget__meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .progress-widget__meta span:first-child {
+            color: var(--text);
+        }
+    </style>
 </head>
+
 <body>
+    <svg width="0" height="0" style="position:absolute">
+        <defs>
+            <clipPath id="heartClipPath" clipPathUnits="objectBoundingBox">
+                <path d="
+            M0.2 0.1
+            H0.4
+            V0.2
+            H0.5
+            V0.1
+            H0.7
+            V0.2
+            H0.8
+            V0.4
+            H0.7
+            V0.5
+            H0.6
+            V0.6
+            H0.5
+            V0.7
+            H0.4
+            V0.6
+            H0.3
+            V0.5
+            H0.2
+            V0.4
+            H0.1
+            V0.2
+            H0.2
+            Z" />
+            </clipPath>
+        </defs>
+    </svg>
+    <canvas id="c"></canvas>
+    <div id="heart-slot">
+        <div id="heart-fill"></div>
+    </div>
 
-<div id="cursor"></div>
+    <svg id="heart-outline" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d="
+            M20 10
+            H40
+            V20
+            H50
+            V10
+            H70
+            V20
+            H80
+            V40
+            H70
+            V50
+            H60
+            V60
+            H50
+            V70
+            H40
+            V60
+            H30
+            V50
+            H20
+            V40
+            H10
+            V20
+            H20
+            Z" />
+    </svg>
 
-<div id="info">
-    X: 0<br>
-    Y: 0
-</div>
+    <div id="typewriter">
+        <span id="typewriter-text"></span><span id="typewriter-cursor">|</span>
+    </div>
 
-<script src="script.js"></script>
+    <div class="widgets-container">
+        <div class="progress-widget" id="ramWidget">
+            <div class="progress-widget__title" id="ramTitle">ram usage</div>
+
+            <div class="progress-bar-row">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="ramFill"></div>
+                </div>
+                <span class="progress-widget__percent" id="ramPercent">0%</span>
+            </div>
+
+            <div class="progress-widget__meta">
+                <span><span id="ramCurrent">0</span> / <span id="ramTotal">0</span></span>
+                <span id="ramStatus">idle</span>
+            </div>
+        </div>
+
+        <div class="progress-widget" id="cpuWidget">
+            <div class="progress-widget__title" id="cpuTitle">cpu usage</div>
+
+            <div class="progress-bar-row">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="cpuFill"></div>
+                </div>
+                <span class="progress-widget__percent" id="cpuPercent">0%</span>
+            </div>
+
+            <div class="progress-widget__meta">
+                <span><span id="cpuCurrent">0</span> / <span id="cpuTotal">0</span></span>
+                <span id="cpuStatus">idle</span>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
 
 </body>
+
 </html>

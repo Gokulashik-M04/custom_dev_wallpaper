@@ -1,8 +1,14 @@
 {
   "version": 2,
-  "dgSpecHash": "JQsNSZMZT0Y=",
+  "dgSpecHash": "0OHnL47wmNs=",
   "success": true,
   "projectFilePath": "D:\\Gokulashik M\\Projects\\custom_dev_wallpaper\\wallpaperserver\\wallpaperserver.csproj",
-  "expectedPackageFiles": [],
+  "expectedPackageFiles": [
+    "C:\\Users\\gokul\\.nuget\\packages\\microsoft.extensions.hosting.windowsservices\\10.0.9\\microsoft.extensions.hosting.windowsservices.10.0.9.nupkg.sha512",
+    "C:\\Users\\gokul\\.nuget\\packages\\system.configuration.configurationmanager\\10.0.9\\system.configuration.configurationmanager.10.0.9.nupkg.sha512",
+    "C:\\Users\\gokul\\.nuget\\packages\\system.diagnostics.performancecounter\\10.0.9\\system.diagnostics.performancecounter.10.0.9.nupkg.sha512",
+    "C:\\Users\\gokul\\.nuget\\packages\\system.security.cryptography.protecteddata\\10.0.9\\system.security.cryptography.protecteddata.10.0.9.nupkg.sha512",
+    "C:\\Users\\gokul\\.nuget\\packages\\system.serviceprocess.servicecontroller\\10.0.9\\system.serviceprocess.servicecontroller.10.0.9.nupkg.sha512"
+  ],
   "logs": []
 }
