@@ -1,8 +1,8 @@
 # custom_dev_wallpaper
 
-A live desktop wallpaper that visualizes your dev environment in real time. The client renders an animated **"C❤️de"** pixel-text scene in the browser/wallpaper engine, while a lightweight C# background service tracks system stats and app usage, streaming them to the client over WebSockets.
+A live desktop wallpaper that visualizes your machine's CPU/RAM usage in real time, with a "C❤️de" pixel-text scene as the centerpiece. The client renders everything in HTML/CSS/JS (designed to run inside a wallpaper engine like **Lively Wallpaper**), while a lightweight C# background service polls system stats and streams them to the client over a WebSocket.
 
-The heart in the middle isn't just decoration — it fills up based on how much of your time is spent in dev tools (VS Code, Docker, terminals, etc.) versus everything else.
+The heart in the middle fills bottom-to-top based on overall system load (average of CPU + RAM usage), and a typewriter widget cycles through a list of phrases below the text.
 
 ---
 
@@ -10,20 +10,21 @@ The heart in the middle isn't just decoration — it fills up based on how much 
 
 ```
 ┌─────────────────────┐        WebSocket        ┌──────────────────────┐
-│   WallpaperServer    │ ───────────────────────▶│   WallpaperClient     │
-│   (C# background     │   { cpu, ram, process }  │   (HTML/CSS/JS)       │
-│    service)           │                          │                       │
+│   WallpaperServer     │ ───────────────────────▶│   WallpaperClient      │
+│   (ASP.NET Core,      │      /monitor           │   (HTML/CSS/JS,        │
+│    runs as a          │   { Cpu, Ram }           │    loaded by Lively)   │
+│    Windows Service)   │                          │                       │
 └─────────────────────┘                          └──────────────────────┘
         │                                                    │
         ▼                                                    ▼
-  Polls OS for:                                    Renders:
-  - CPU usage                                       - "C❤️de" pixel-grid text
-  - RAM usage                                       - CPU / RAM usage widgets
-  - Active/foreground process                        - Heart fill (dev-tool time %)
-  - Dev-tool focus time
+  Polls OS every 500ms:                             Renders:
+  - CPU usage (%)                                    - "C❤️de" pixel-grid text
+  - RAM usage (%)                                     - CPU / RAM progress-bar widgets
+                                                       - Heart fill (avg CPU+RAM load)
+                                                       - Looping typewriter text
 ```
 
-The server is the source of truth for system data. The client is a dumb renderer — it never polls anything itself, it just reacts to whatever the server pushes over the socket.
+The server is the source of truth for system data. The client never polls anything itself — it opens one WebSocket connection and reacts to whatever the server pushes.
 
 ---
 
@@ -32,13 +33,20 @@ The server is the source of truth for system data. The client is a dumb renderer
 ```
 custom_dev_wallpaper/
 ├── WallpaperClient/
-│   ├── index.html        # Markup + styles for the scene and widgets
-│   └── script.js         # Canvas text rendering, heart fill, widget logic, WS client
+│   ├── index.html        # Markup + styles: canvas text, heart, progress widgets, typewriter
+│   └── script.js         # Canvas text rendering, heart fill, progress bars,
+│                          # MonitorSocket (WS client), typewriter loop
 │
 ├── WallpaperServer/
-│   ├── Program.cs        # Entry point, WebSocket server bootstrap
-│   ├── ProcessTracker.cs # Watches running processes, tracks dev-tool focus time
-│   ├── SystemStats.cs    # Polls CPU / RAM usage
+│   ├── Program.cs                    # Entry point, Kestrel URL binding, /monitor endpoint,
+│   │                                  # UseWindowsService() for service hosting
+│   ├── Interfaces/
+│   │   └── IInformation.cs           # Shared contract for stat readers
+│   ├── Services/
+│   │   ├── CpuService.cs             # Implements IInformation, reads CPU usage
+│   │   └── RamService.cs             # Implements IInformation, reads RAM usage
+│   ├── Model/
+│   │   └── SystemInfo.cs             # { Cpu, Ram } — the payload sent over the socket
 │   └── WallpaperServer.csproj
 │
 └── README.md
@@ -48,13 +56,14 @@ custom_dev_wallpaper/
 
 ## WallpaperClient
 
-A self-contained HTML/CSS/JS scene, designed to be run inside a wallpaper engine (e.g. Wallpaper Engine, Lively Wallpaper) or any browser-based wallpaper host that can load local HTML.
+A self-contained HTML/CSS/JS scene, designed to be loaded as a wallpaper by Lively Wallpaper (or any wallpaper engine / browser host that can load local HTML).
 
 ### What it renders
 
-- **"C❤️de" pixel-grid text** — built from a `<canvas>`, with each letter rasterized into a grid of small squares that brighten near the mouse cursor (cosmetic only — wallpaper engines that don't track mouse position will just show the static base color).
-- **Heart fill widget** — the heart-shaped gap between "C" and "de" fills bottom-to-top and shifts color from black → red as `value/total` increases. Driven by `value`/`total` numbers sent from the server (currently mapped to dev-tool focus time), with a white outline traced around the heart shape itself so it stays readable at every fill level.
-- **Reusable progress-bar widget** — a flat rectangular bar with a title, current/total counts, and a live `%` shown beside the bar. Used for CPU and RAM usage, but built generically so any `{ title, value, total }` triple can drive it.
+- **"C❤️de" pixel-grid text** — built from a `<canvas>`, rasterized into a grid of small squares that brighten near the mouse cursor.
+- **Heart fill widget** — the heart-shaped gap between "C" and "de" fills bottom-to-top and shifts color from black → red as load increases, with a white outline traced around the heart shape.
+- **CPU / RAM progress-bar widgets** — two widgets stacked bottom-left, built off a shared `createProgressBarController()` factory so both widgets reuse the same render/animate logic.
+- **Typewriter widget** — centered below the main text, loops forever through an array of phrases (type out → pause → delete → next).
 
 ### Core reusable functions (`script.js`)
 
@@ -62,105 +71,158 @@ A self-contained HTML/CSS/JS scene, designed to be run inside a wallpaper engine
 |---|---|
 | `setHeartProgress(value, total)` | Set heart fill instantly, no animation |
 | `animateHeartTo(value, total, durationMs)` | Smoothly tween heart fill to a new value |
-| `setProgressBar(title, value, total)` | Set a progress bar instantly, no animation |
-| `animateProgressBarTo(title, value, total, durationMs)` | Smoothly tween a progress bar to a new value |
-
-These are intentionally decoupled from *where* the data comes from. Right now a demo loop calls them with random values; in production they're called from the WebSocket `onmessage` handler whenever the server pushes a new reading.
+| `createProgressBarController(elements)` | Factory returning `{ setTitle, set, animateTo }` for one progress-bar widget |
+| `positionHeartSlot()` / `positionTypewriter()` | Re-layout the heart and typewriter under the canvas text; called on load and on window resize |
+| `startTypewriterLoop(phrases)` | Kicks off the forever type/delete cycle over an array of strings |
 
 ### Connecting to the server
 
-The client opens a single WebSocket connection on load and listens for JSON messages:
+The client opens a single WebSocket via the `MonitorSocket` class, which auto-reconnects (2s delay) if the connection drops:
 
 ```js
-const socket = new WebSocket('ws://localhost:5000/ws');
+const MONITOR_SOCKET_URL = 'ws://localhost:5229/monitor';
 
-socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
+new MonitorSocket(MONITOR_SOCKET_URL, (info) => {
+    cpuBar.animateTo(info.Cpu, 100, 500);
+    ramBar.animateTo(info.Ram, 100, 500);
 
-    switch (data.type) {
-        case 'cpu':
-            animateProgressBarTo('cpu usage', data.value, 100);
-            break;
-        case 'ram':
-            animateProgressBarTo('ram usage', data.value, data.total);
-            break;
-        case 'devToolTime':
-            animateHeartTo(data.value, data.total);
-            break;
-    }
-};
+    const avgLoad = (info.Cpu + info.Ram) / 2;
+    animateHeartTo(avgLoad, 100, 500);
+});
 ```
 
-The exact message shape is up to you and the server — see [Message format](#message-format) below for the suggested contract.
+`MONITOR_SOCKET_URL` must match wherever the server is actually bound (see [Choosing the port](#choosing-the-port) below).
 
 ### Running it standalone (without the server)
 
-Open `index.html` directly in a browser. A demo block at the bottom of `script.js` calls the widget functions on a timer with fake values, so you can preview the visuals before the server is wired up. Delete or comment out that block once real data is flowing.
+Open `index.html` directly in a browser. With no server running, `MonitorSocket` will just keep retrying quietly in the background — the pixel text, heart (at 0%), progress bars (at 0%), and typewriter will all still render and animate normally.
 
 ---
 
 ## WallpaperServer
 
-A C# background service that watches the OS for running processes and resource usage, then pushes updates to any connected WallpaperClient over a WebSocket.
+An ASP.NET Core app that polls CPU/RAM usage and pushes readings to any connected client over a WebSocket at `/monitor`, every 500ms.
 
-### Responsibilities
-
-- **System stats polling** — periodically reads current CPU and RAM usage.
-- **Process tracking** — watches the active/foreground process and a configurable list of "dev tools" (VS Code, Docker Desktop, terminal apps, IDEs, etc.), accumulating time spent in each.
-- **WebSocket broadcasting** — pushes updates to connected clients as they happen, rather than waiting on the client to ask.
-
-### Suggested message format
-
-A simple `type` + `value` + `total` envelope keeps the client generic — every widget function takes exactly this shape:
+### Message format
 
 ```json
-{ "type": "cpu", "value": 42, "total": 100 }
-{ "type": "ram", "value": 6.4, "total": 16 }
-{ "type": "devToolTime", "value": 130, "total": 480 }
+{ "Cpu": 42.3, "Ram": 61.8 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `type` | Which widget this update targets (`cpu`, `ram`, `devToolTime`, or any future widget type) |
-| `value` | Current reading |
-| `total` | The denominator for computing % (e.g. total RAM in GB, or total tracked minutes in the session) |
+Both fields are percentages (0–100). The client treats `total` as a fixed 100 for both, so no `total` field is sent.
 
-Keeping `total` in every message (rather than hardcoding it client-side) means the client never needs a config change if, say, total RAM differs across machines.
+### Choosing the port
 
-### Configuring tracked dev tools
+Set it explicitly in `Program.cs` so it doesn't depend on `launchSettings.json` (which is dev-only and is ignored when running as a Windows Service):
 
-The list of process names counted as "dev tools" for the heart-fill metric should live in server-side config (e.g. `appsettings.json`) rather than hardcoded, so it's easy to add new tools without recompiling:
-
-```json
-{
-  "TrackedDevTools": [
-    "Code.exe",
-    "docker.exe",
-    "Docker Desktop.exe",
-    "WindowsTerminal.exe",
-    "devenv.exe"
-  ]
-}
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://localhost:5229"); // must match MONITOR_SOCKET_URL in script.js
+builder.Host.UseWindowsService();
+var app = builder.Build();
 ```
 
-### Running the server
+Binding to `localhost` (not `0.0.0.0`) keeps the socket reachable only from your own machine.
+
+### Running it during development
 
 ```bash
 cd WallpaperServer
 dotnet run
 ```
 
-By default it should bind to a local WebSocket endpoint (e.g. `ws://localhost:5000/ws`) that the client connects to on load.
+---
+
+## Building and running it as a Windows Service
+
+This makes the server start automatically at boot, with no console window, and restart itself if it crashes — so you never have to manually `dotnet run` it again.
+
+### 1. Add the Windows Service hosting package
+
+```bash
+dotnet add package Microsoft.Extensions.Hosting.WindowsServices
+```
+
+### 2. Wire it up in `Program.cs`
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://localhost:5229");
+builder.Host.UseWindowsService();
+var app = builder.Build();
+```
+
+`UseWindowsService()` detects the hosting context automatically — the same build still runs fine with `dotnet run` during development.
+
+### 3. Publish
+
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained false -o "D:\path\to\publish"
+```
+
+Use a dedicated `publish` folder, separate from your normal `bin\Debug`/`bin\Release` output, so a locked running service `.exe` never blocks your everyday `dotnet build`.
+
+> If the path contains spaces, always wrap it in quotes — an unquoted path with a space gets split into multiple arguments and `dotnet` will misread it.
+
+### 4. Register the service
+
+Run PowerShell **as Administrator**. Note: use `sc.exe` explicitly — plain `sc` is a PowerShell alias for `Set-Content` and will not work.
+
+```powershell
+sc.exe create WallpaperServer binPath= "D:\path\to\publish\WallpaperServer.exe" start= auto
+```
+
+If the path has spaces, wrap it in escaped inner quotes as well:
+
+```powershell
+sc.exe create WallpaperServer binPath= "\"D:\path with spaces\publish\WallpaperServer.exe\"" start= auto
+```
+
+### 5. Configure restart-on-failure
+
+```powershell
+sc.exe failure WallpaperServer reset= 86400 actions= restart/5000/restart/5000/restart/5000
+```
+
+Restarts up to 3 times, 5 seconds apart, resetting the failure count after 24 hours of stability.
+
+### 6. Start it
+
+```powershell
+sc.exe start WallpaperServer
+```
+
+### 7. Verify
+
+```powershell
+sc.exe query WallpaperServer
+```
+
+Look for `STATE : 4 RUNNING`. If it's not running, check Event Viewer → Windows Logs → Application for the failure reason (common causes: port already in use, missing .NET runtime on the machine if published as framework-dependent).
+
+Once confirmed, reboot once to make sure it comes up on its own with zero manual steps — that's the whole point.
+
+### Useful service commands going forward
+
+| Command | Effect |
+|---|---|
+| `sc.exe query WallpaperServer` | Check current status |
+| `sc.exe stop WallpaperServer` | Stop it |
+| `sc.exe start WallpaperServer` | Start it |
+| `sc.exe qc WallpaperServer` | Show how it's registered (binary path, start type) |
+| `sc.exe delete WallpaperServer` | Unregister it entirely (stop it first) |
 
 ---
 
 ## Roadmap / ideas
 
-- [ ] Persist dev-tool time across sessions (daily/weekly totals, not just "since wallpaper started")
-- [ ] Per-app breakdown widget (not just an aggregate heart fill)
+- [x] Reconnect/retry logic in the client if the WebSocket drops (`MonitorSocket`)
+- [x] Package the server as a Windows Service so it runs automatically
+- [ ] Persist historical CPU/RAM readings (not just the live instantaneous value)
+- [ ] Config file (`appsettings.json`) for polling interval and bound port, instead of hardcoding
 - [ ] Configurable color themes (currently monochrome + red heart fill)
-- [ ] Reconnect/retry logic in the client if the WebSocket drops
-- [ ] Package the server as a Windows service / startup task so it runs automatically
+- [ ] Terminal/command widget on the client, with a matching command-execution endpoint on the server
+- [ ] Additional stats: disk usage, network throughput, per-core CPU breakdown
 
 ---
 
