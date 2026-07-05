@@ -1,6 +1,9 @@
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const heartSlot = document.getElementById('heart-slot');
+// ---- Typewriter: loops forever over an array of phrases ----
+const typewriterEl = document.getElementById('typewriter');
+const typewriterTextEl = document.getElementById('typewriter-text');
 
 let W, H;
 function resize() {
@@ -8,7 +11,7 @@ function resize() {
     H = canvas.height = window.innerHeight;
 }
 resize();
-window.addEventListener('resize', () => { resize(); buildGrid(); positionHeartSlot(); });
+window.addEventListener('resize', () => { resize(); buildGrid(); positionHeartSlot();positionTypewriter();  });
 
 // ---- Pixel grid settings ----
 const PIXEL = 6;      // size of each "pixel" cell
@@ -124,6 +127,7 @@ function buildGrid() {
 
 buildGrid();
 positionHeartSlot();
+positionTypewriter()
 
 // ---- Mouse tracking ----
 let mouseX = -9999, mouseY = -9999;
@@ -242,103 +246,326 @@ function easeInOutQuad(t) {
 
 
 /* ======================================================================
-   PROGRESS BAR  —  title/value/total all passed in programmatically.
-   No <input> typing — content comes from a function call (later: server data).
+   PROGRESS BAR CONTROLLER  —  a small factory so CPU and RAM widgets
+   (or any future metric) can share the same rendering/animation logic
+   instead of duplicating it per-widget.
    ====================================================================== */
 
-const progressTitleEl = document.getElementById('progressTitle');
-const progressFillEl = document.getElementById('progressFill');
-const percentLabelEl = document.getElementById('percentLabel');
-const currentCountEl = document.getElementById('current-count');
-const totalCountEl = document.getElementById('total-count');
-const statusLabelEl = document.getElementById('statusLabel');
+/**
+ * @typedef {Object} ProgressBarElements
+ * @property {HTMLElement} titleEl
+ * @property {HTMLElement} fillEl
+ * @property {HTMLElement} percentEl
+ * @property {HTMLElement} currentEl
+ * @property {HTMLElement} totalEl
+ * @property {HTMLElement} statusEl
+ */
 
 /**
- * Set the progress bar instantly (no animation).
- * @param {string} title - label shown above the bar, e.g. "files uploaded"
- * @param {number} value - current amount
- * @param {number} total - max amount (100%)
+ * Creates a controller for a single progress-bar widget.
+ * @param {ProgressBarElements} els
  */
-function setProgressBar(title, value, total) {
-    const safeTotal = total > 0 ? total : 1;
-    const percent = Math.max(0, Math.min(100, Math.round((value / safeTotal) * 100)));
+function createProgressBarController(els) {
+    let currentPercent = 0;
 
-    progressTitleEl.textContent = title;
-    progressFillEl.style.width = percent + '%';
-    percentLabelEl.textContent = percent + '%';
-    currentCountEl.textContent = value;
-    totalCountEl.textContent = total;
-    statusLabelEl.textContent = statusForPercent(percent);
-
-    const brightness = 0.85 + (percent / 100) * 0.3;
-    progressFillEl.style.filter = `brightness(${brightness})`;
-}
-
-/**
- * Animate the progress bar smoothly to a new value/total.
- * Call this whenever new data arrives (e.g. a server response or websocket push).
- * @param {string} title
- * @param {number} value
- * @param {number} total
- * @param {number} durationMs
- */
-function animateProgressBarTo(title, value, total, durationMs = 1200) {
-    const safeTotal = total > 0 ? total : 1;
-    const targetPercent = Math.max(0, Math.min(100, (value / safeTotal) * 100));
-
-    const startPercent = parseFloat(progressFillEl.style.width) || 0;
-    const startTime = performance.now();
-
-    progressTitleEl.textContent = title;
-    totalCountEl.textContent = total;
-
-    function step(now) {
-        const elapsed = now - startTime;
-        const t = Math.min(1, elapsed / durationMs);
-        const eased = easeInOutQuad(t);
-        const current = startPercent + (targetPercent - startPercent) * eased;
-        const roundedPercent = Math.round(current);
-
-        progressFillEl.style.width = current + '%';
-        percentLabelEl.textContent = roundedPercent + '%';
-        currentCountEl.textContent = Math.round((current / 100) * total);
-        statusLabelEl.textContent = statusForPercent(roundedPercent);
-
-        const brightness = 0.85 + (current / 100) * 0.3;
-        progressFillEl.style.filter = `brightness(${brightness})`;
-
-        if (t < 1) requestAnimationFrame(step);
+    function clampPercent(p) {
+        return Math.max(0, Math.min(100, p));
     }
-    requestAnimationFrame(step);
+
+    function statusForPercent(percent) {
+        if (percent === 0) return 'idle';
+        if (percent < 50) return 'nominal';
+        if (percent < 85) return 'elevated';
+        return 'high load';
+    }
+
+    function render(percent, value, total) {
+        const rounded = Math.round(percent);
+        els.fillEl.style.width = percent + '%';
+        els.percentEl.textContent = rounded + '%';
+        els.currentEl.textContent = Math.round(value);
+        els.totalEl.textContent = total;
+        els.statusEl.textContent = statusForPercent(rounded);
+
+        const brightness = 0.85 + (percent / 100) * 0.3;
+        els.fillEl.style.filter = `brightness(${brightness})`;
+    }
+
+    return {
+        setTitle(title) {
+            els.titleEl.textContent = title;
+        },
+
+        /**
+         * Set the bar instantly (no animation).
+         * @param {number} value
+         * @param {number} total
+         */
+        set(value, total) {
+            const safeTotal = total > 0 ? total : 1;
+            currentPercent = clampPercent((value / safeTotal) * 100);
+            render(currentPercent, value, total);
+        },
+
+        /**
+         * Animate the bar smoothly to a new value/total.
+         * @param {number} value
+         * @param {number} total
+         * @param {number} durationMs
+         */
+        animateTo(value, total, durationMs = 900) {
+            const safeTotal = total > 0 ? total : 1;
+            const targetPercent = clampPercent((value / safeTotal) * 100);
+            const startPercent = currentPercent;
+            const startTime = performance.now();
+            els.totalEl.textContent = total;
+
+            function step(now) {
+                const t = Math.min(1, (now - startTime) / durationMs);
+                const eased = easeInOutQuad(t);
+                const percent = startPercent + (targetPercent - startPercent) * eased;
+                render(percent, (percent / 100) * total, total);
+                currentPercent = percent;
+                if (t < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
+    };
 }
 
-function statusForPercent(percent) {
-    if (percent === 0) return 'idle';
-    if (percent < 50) return 'in progress';
-    if (percent < 100) return 'almost there';
-    return 'complete';
-}
+const cpuBar = createProgressBarController({
+    titleEl: document.getElementById('cpuTitle'),
+    fillEl: document.getElementById('cpuFill'),
+    percentEl: document.getElementById('cpuPercent'),
+    currentEl: document.getElementById('cpuCurrent'),
+    totalEl: document.getElementById('cpuTotal'),
+    statusEl: document.getElementById('cpuStatus')
+});
+
+const ramBar = createProgressBarController({
+    titleEl: document.getElementById('ramTitle'),
+    fillEl: document.getElementById('ramFill'),
+    percentEl: document.getElementById('ramPercent'),
+    currentEl: document.getElementById('ramCurrent'),
+    totalEl: document.getElementById('ramTotal'),
+    statusEl: document.getElementById('ramStatus')
+});
+
+cpuBar.setTitle('cpu usage');
+ramBar.setTitle('ram usage');
+cpuBar.set(0, 100);
+ramBar.set(0, 100);
+setHeartProgress(0, 100);
 
 
 /* ======================================================================
-   DEMO ONLY — remove this block once real server data is wired in.
-   Shows how setProgressBar/animateHeartTo etc. get called with fresh values.
-   In production, replace this setInterval with your actual data source,
-   e.g. a fetch() poll or a websocket "onmessage" handler, calling:
-       animateProgressBarTo(title, value, total)
-       animateHeartTo(value, total)
+   SYSTEM INFO TYPE  —  mirrors the C# `SystemInfo` model sent by the
+   WallpaperServer over the /monitor WebSocket.
    ====================================================================== */
 
-let demoValue = 0;
-const demoTotal = 50;
+/**
+ * @typedef {Object} SystemInfo
+ * @property {number} Cpu - CPU utilization, expected as a 0-100 percentage.
+ * @property {number} Ram - RAM utilization, expected as a 0-100 percentage.
+ */
 
-setProgressBar('chars typed', 0, demoTotal);
-setHeartProgress(0, demoTotal);
 
-setInterval(() => {
-    demoValue = Math.min(demoTotal, demoValue + Math.round(Math.random() * 6));
-    animateProgressBarTo('chars typed', demoValue, demoTotal, 900);
-    animateHeartTo(demoValue, demoTotal, 900);
+/* ======================================================================
+   MONITOR SOCKET  —  connects to the WallpaperServer's /monitor endpoint,
+   parses each SystemInfo push, and auto-reconnects on drop.
+   ====================================================================== */
 
-    if (demoValue >= demoTotal) demoValue = 0; // loop demo
-}, 1800);
+class MonitorSocket {
+    /**
+     * @param {string} url - e.g. "ws://localhost:5000/monitor"
+     * @param {(info: SystemInfo) => void} onMessage
+     */
+    constructor(url, onMessage) {
+        this.url = url;
+        this.onMessage = onMessage;
+        this.reconnectDelayMs = 2000;
+        this.socket = null;
+        this._connect();
+    }
+
+    _connect() {
+        this.socket = new WebSocket(this.url);
+
+        this.socket.addEventListener('open', () => {
+            console.log(`MonitorSocket: connected to ${this.url}`);
+        });
+
+        this.socket.addEventListener('message', (event) => {
+            try {
+                /** @type {SystemInfo} */
+                const info = JSON.parse(event.data);
+                this.onMessage(info);
+            } catch (err) {
+                console.error('MonitorSocket: failed to parse message', err);
+            }
+        });
+
+        this.socket.addEventListener('close', () => {
+            console.warn('MonitorSocket: connection closed, retrying...');
+            setTimeout(() => this._connect(), this.reconnectDelayMs);
+        });
+
+        this.socket.addEventListener('error', () => {
+            this.socket.close();
+        });
+    }
+}
+
+// Update to match wherever WallpaperServer is actually listening (see its
+// launch settings / Kestrel binding for the real host and port).
+const MONITOR_SOCKET_URL = 'ws://localhost:5229/monitor';
+
+new MonitorSocket(MONITOR_SOCKET_URL, (info) => {
+    cpuBar.animateTo(info.Cpu, 100, 500);
+    ramBar.animateTo(info.Ram, 100, 500);
+
+    // Heart now reflects overall system load instead of the old demo data.
+    const avgLoad = (info.Cpu + info.Ram) / 2;
+    animateHeartTo(avgLoad, 100, 500);
+});
+
+
+
+// Edit this array with whatever phrases you want cycling.
+const typewriterPhrases = [
+    // Dev
+    "building things one commit at a time",
+    "git commit -m \"it works... hopefully\"",
+    "git fetch > git pull",
+    "merge conflicts build character",
+    "debugging is my cardio",
+    "works on my machine™",
+    "sudo make me better",
+    "npm install && pray",
+    "docker compose up",
+    "dockerized my problems",
+    "terraform apply",
+    "aws | dotnet | react | docker |",
+    "cloud native in progress ☁️",
+    "CI/CD > copy & paste deployment",
+    "automate the boring stuff",
+    "console.log(saved_my_life)",
+    "404: excuses not found",
+    "500: motivation server error",
+    "throw new Exception(\"Skill Issue\")",
+    "System.out.println(\"Keep Going\");",
+    "while(true) { learn(); }",
+    "if(failed) tryAgain();",
+    "return betterThanYesterday;",
+    "refactor > rewrite",
+    "build > consume",
+    "ship. learn. repeat.",
+    "custom_dev_wallpaper",
+
+    // DSA
+    "O(log n) feels good",
+    "accepted ✅",
+    "time limit exceeded... again",
+    "one more LeetCode",
+    "graphs > trees > dp > sleep",
+    "binary search fixes everything",
+    "optimize later? no. optimize now.",
+
+    // Gym
+    "eat • code • gym • repeat",
+    "discipline > motivation",
+    "progressive overload",
+    "strong body. stronger mind.",
+    "one more rep. one more bug.",
+
+    // Mindset
+    "consistency compounds",
+    "be better than yesterday",
+    "focus. execute. improve.",
+    "dream big. start small.",
+    "small wins every day",
+    "discipline creates freedom",
+    "future me is watching",
+    "the compound effect",
+    "trust the process",
+    "stay curious.",
+    "keep showing up.",
+    "learning never exits",
+    "one percent better",
+    "always shipping, always learning",
+    "don't count the hours",
+    "be undeniable.",
+
+    // Fun
+    "coffee.exe has stopped responding ☕",
+    "loading confidence...",
+    "sleep is deprecated",
+    "feature complete (probably)",
+    "99 bugs in the code...",
+    "CTRL + S every 10 seconds",
+    "keyboard > mouse",
+    "I void warranties",
+    "developer mode: enabled",
+    "RGB increases performance",
+    "no AI, only Stack Overflow 😄",
+    "brain compiling...",
+    "/* TODO: Become Legendary */",
+    "Achievement Unlocked: Fixed One Bug",
+    "Segmentation fault (life dumped core)",
+    "Hello, Future Me."
+];
+//await fetch('phrases.json').then(res=>res.json()).then(data=>data.phrases);
+// async function loadTypewriterPhrases() {
+//     typewriterPhrases = await fetch('phrases.json').then(res => res.json()).then(data => data.phrases);
+//     startTypewriterLoop(typewriterPhrases);
+// }
+// loadTypewriterPhrases();
+
+const TYPE_SPEED_MS = 70;
+const DELETE_SPEED_MS = 40;
+const PAUSE_AFTER_TYPE_MS = 1400;
+const PAUSE_AFTER_DELETE_MS = 400;
+
+async function startTypewriterLoop(phrases) {
+    let phraseIndex = 0;
+    let charIndex = 0;
+
+    function typeStep() {
+        const phrase = phrases[phraseIndex];
+        charIndex++;
+        typewriterTextEl.textContent = phrase.slice(0, charIndex);
+
+        if (charIndex < phrase.length) {
+            setTimeout(typeStep, TYPE_SPEED_MS);
+        } else {
+            setTimeout(deleteStep, PAUSE_AFTER_TYPE_MS);
+        }
+    }
+
+    function deleteStep() {
+        charIndex--;
+        typewriterTextEl.textContent = typewriterTextEl.textContent.slice(0, charIndex);
+
+        if (charIndex > 0) {
+            setTimeout(deleteStep, DELETE_SPEED_MS);
+        } else {
+            phraseIndex = (phraseIndex + 1) % phrases.length; // loop forever
+            setTimeout(typeStep, PAUSE_AFTER_DELETE_MS);
+        }
+    }
+
+    typeStep();
+}
+
+if (typewriterPhrases.length > 0) {
+    startTypewriterLoop(typewriterPhrases);
+}
+// ---- Position the typewriter below the "C {heart} de" text ----
+function positionTypewriter() {
+    const layout = computeLayout();
+    const centerX = (layout.cStartX + layout.deStartX + layout.deWidth) / 2;
+    const topY = layout.cy + FONT_SIZE * 0.22; // just under the baseline of the main text
+
+    typewriterEl.style.left = `${centerX}px`;
+    typewriterEl.style.top = `${topY}px`;
+}

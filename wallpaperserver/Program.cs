@@ -1,30 +1,44 @@
-﻿using System;
-using System.Runtime.InteropServices;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using wallpaperserver.Interfaces;
+using wallpaperserver.Model;
+using wallpaperserver.Services;
 
-class Program
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://localhost:5229");
+builder.Host.UseWindowsService();
+var app = builder.Build();
+app.UseWebSockets();
+
+app.Map("/monitor", async context =>
 {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct POINT
+    if (!context.WebSockets.IsWebSocketRequest)
     {
-        public int X;
-        public int Y;
+        context.Response.StatusCode = 400;
+        return;
     }
 
-    [DllImport("user32.dll")]
-    static extern bool GetCursorPos(out POINT lpPoint);
-
-    static void Main()
+    using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    SystemInfo systemInfo = new SystemInfo();
+    IInformation cpuService = new CpuService();
+    IInformation ramService = new RamService();
+    while (socket.State == WebSocketState.Open)
     {
-        while (true)
-        {
-            GetCursorPos(out POINT point);
+        systemInfo.Cpu = cpuService.GetReading();
+        systemInfo.Ram = ramService.GetReading();
+        string json = JsonSerializer.Serialize(systemInfo);
 
-            Console.Clear();
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
 
-            Console.WriteLine($"Mouse X : {point.X}");
-            Console.WriteLine($"Mouse Y : {point.Y}");
+        await socket.SendAsync(
+            bytes,
+            WebSocketMessageType.Text,
+            true,
+            CancellationToken.None);
 
-            Thread.Sleep(50);
-        }
+        await Task.Delay(500);
     }
-}
+});
+
+app.Run();
